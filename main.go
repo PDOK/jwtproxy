@@ -79,38 +79,15 @@ func main() {
 	// So without rewriting the request, we'd actually get a request to https://api.example.org/api/user?id=1
 	rewrite := NewRewriteHandler(prefix, proxy)
 
-	//wrapped := rewrite
-	if isCorsAllowed {
-		fmt.Println("Allow CORS")
-	}
-
-	// Wrap the RewriteHandler in the CORS middleware handler.
-
-	//}
-
 	// Wrap the proxy in authentication.
 	auth := NewJWTAuthHandler(keys, time.Now, authHeader, rewrite)
 
-	cors := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			headers := w.Header()
-			headers.Set("Access-Control-Allow-Origin", "*")
-			headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			headers.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
-	wrapped := cors(auth)
+	corsMiddleware := NewCorsMiddleware(isCorsAllowed, auth)
 
 	// Wrap the authentication in a health check (health checks don't need authentication).
 	health := HealthCheckHandler{
 		Path: getHealthCheckURI(),
-		Next: wrapped,
+		Next: corsMiddleware,
 	}
 
 	// Wrap the health check in a logger.
@@ -121,6 +98,29 @@ func main() {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
+}
+
+func NewCorsMiddleware(isCorsAllowed bool, next http.Handler) http.Handler {
+	cors := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			if isCorsAllowed {
+				fmt.Println("Allow CORS")
+				headers := w.Header()
+				headers.Set("Access-Control-Allow-Origin", "*")
+				headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				headers.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+				if r.Method == "OPTIONS" {
+					w.WriteHeader(http.StatusOK)
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	return cors(next)
 }
 
 // NewReverseProxy creates a reverse proxy.
@@ -350,7 +350,7 @@ func getCors() (bool, error) {
 
 	val, present := os.LookupEnv(envLabelStrictSsl)
 
-	if h && present {
+	if !h && present {
 		boolVal, err := strconv.ParseBool(val)
 
 		if err != nil {
