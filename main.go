@@ -83,7 +83,14 @@ func main() {
 	if isCorsAllowed {
 		fmt.Println("Allow CORS")
 	}
-	// Create a CORS middleware handler.
+
+	// Wrap the RewriteHandler in the CORS middleware handler.
+
+	//}
+
+	// Wrap the proxy in authentication.
+	auth := NewJWTAuthHandler(keys, time.Now, authHeader, rewrite)
+
 	cors := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			headers := w.Header()
@@ -93,18 +100,12 @@ func main() {
 			next.ServeHTTP(w, r)
 		})
 	}
-
-	// Wrap the RewriteHandler in the CORS middleware handler.
-	wrapped := cors(rewrite)
-	//}
-
-	// Wrap the proxy in authentication.
-	auth := NewJWTAuthHandler(keys, time.Now, authHeader, wrapped)
+	wrapped := cors(auth)
 
 	// Wrap the authentication in a health check (health checks don't need authentication).
 	health := HealthCheckHandler{
 		Path: getHealthCheckURI(),
-		Next: auth,
+		Next: wrapped,
 	}
 
 	// Wrap the health check in a logger.
