@@ -93,6 +93,15 @@ func main() {
 
 	cors := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			if r.Method == "OPTIONS" {
+				headers := w.Header()
+				headers.Set("Access-Control-Allow-Origin", "*")
+				headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				headers.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.WriteHeader(http.StatusOK)
+			}
+
 			headers := w.Header()
 			headers.Set("Access-Control-Allow-Origin", "*")
 			headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
