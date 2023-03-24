@@ -24,6 +24,7 @@ var healthCheckFlag = flag.String("health", "/health", "The path to the healthch
 var prefixFlag = flag.String("prefix", "", "The prefix to strip from incoming requests applied to the remote URL, e.g to make /api/user?id=1 map to /user?id=1")
 var authHeaderFlag = flag.String("authHeader", "Authorization", "the HTTP header for the proxy (default 'Authorization')")
 var strictSslFlag = flag.Bool("strictSsl", true, "Set flag to set strict ssl on (default) and off")
+var corsFlag = flag.Bool("cors", false, "Set to true to allow CORS")
 
 func main() {
 
@@ -61,6 +62,12 @@ func main() {
 		os.Exit(-1)
 	}
 
+	isCorsAllowed, err := getCors()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(-1)
+	}
+
 	remoteHostHeader := getRemoteHostHeader()
 
 	proxy := NewReverseProxy(remoteURL, remoteHostHeader, strictSsl, authHeader)
@@ -75,16 +82,45 @@ func main() {
 	// Wrap the proxy in authentication.
 	auth := NewJWTAuthHandler(keys, time.Now, authHeader, rewrite)
 
+	corsMiddleware := NewCorsMiddleware(isCorsAllowed, auth)
+
 	// Wrap the authentication in a health check (health checks don't need authentication).
 	health := HealthCheckHandler{
 		Path: getHealthCheckURI(),
-		Next: auth,
+		Next: corsMiddleware,
 	}
 
 	// Wrap the health check in a logger.
 	app := NewLoggingHandler(health)
 
-	http.ListenAndServe(":"+port, app)
+	err = http.ListenAndServe(":"+port, app)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(-1)
+	}
+}
+
+func NewCorsMiddleware(isCorsAllowed bool, next http.Handler) http.Handler {
+	cors := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			if isCorsAllowed {
+				fmt.Println("Allow CORS")
+				headers := w.Header()
+				headers.Set("Access-Control-Allow-Origin", "*")
+				headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				headers.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+				if r.Method == "OPTIONS" {
+					w.WriteHeader(http.StatusOK)
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	return cors(next)
 }
 
 // NewReverseProxy creates a reverse proxy.
@@ -295,6 +331,26 @@ func getStrictSsl() (bool, error) {
 	val, present := os.LookupEnv(envLabelStrictSsl)
 
 	if h && present {
+		boolVal, err := strconv.ParseBool(val)
+
+		if err != nil {
+			return h, fmt.Errorf("could not load %s with value '%s', please use a valid boolean value", envLabelStrictSsl, val)
+		}
+
+		h = boolVal
+	}
+
+	return h, nil
+}
+
+func getCors() (bool, error) {
+	var envLabelStrictSsl = "JWTPROXY_CORS"
+
+	h := *corsFlag
+
+	val, present := os.LookupEnv(envLabelStrictSsl)
+
+	if !h && present {
 		boolVal, err := strconv.ParseBool(val)
 
 		if err != nil {

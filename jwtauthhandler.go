@@ -135,4 +135,5 @@ func NewJWTAuthHandler(keys map[string]string, now func() time.Time, authHeader 
 
 func (jwth JWTAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	jwth.middleware.CheckJWT(jwth.Next).ServeHTTP(w, r)
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 }
