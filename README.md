@@ -58,7 +58,7 @@ The payload must contain an issuer agreed between the two parties, and an expira
 * iat
   * issued at time: The time when the JWT was generated as a Unix timestamp. (OPTIONAL)
 
-Note: timestamps should not have quotes!
+Note: timestamps should be numbers (so no quotes)!
 
 ```json
 {
